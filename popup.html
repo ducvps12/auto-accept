@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 300px;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(137,180,250,0.15);
+    }
+    .header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #89b4fa;
+    }
+    .header .icon { font-size: 20px; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+    .status-badge.active {
+      background: rgba(166,227,161,0.15);
+      color: #a6e3a1;
+    }
+    .status-badge.inactive {
+      background: rgba(243,139,168,0.15);
+      color: #f38ba8;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    .status-badge.active .status-dot { background: #a6e3a1; }
+    .status-badge.inactive .status-dot { background: #f38ba8; animation: none; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+    }
+    .toggle-row label {
+      font-size: 13px;
+      color: #bac2de;
+    }
+    .switch {
+      position: relative;
+      width: 38px; height: 20px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: #585b70;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 2px; top: 2px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.3s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .switch input:checked + .slider { background: #a6e3a1; }
+    .switch input:checked + .slider::before { left: 20px; }
+
+    .stats {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .stat-card {
+      flex: 1;
+      text-align: center;
+      padding: 8px 4px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .stat-card .num {
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .stat-card .label {
+      font-size: 9px;
+      color: #a6adc8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+    .stat-card.accept .num { color: #a6e3a1; }
+    .stat-card.retry .num { color: #fab387; }
+
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .btn {
+      flex: 1;
+      padding: 9px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 12px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:active { transform: scale(0.97); }
+    .btn-inject {
+      background: linear-gradient(135deg, #89b4fa, #74c7ec);
+      color: #1e1e2e;
+    }
+    .btn-stop {
+      background: linear-gradient(135deg, #f38ba8, #eb6f92);
+      color: white;
+    }
+    .footer {
+      margin-top: 12px;
+      text-align: center;
+      font-size: 10px;
+      color: #585b70;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="icon">⚡</span>
+    <h1>AG Auto-Accept</h1>
+  </div>
+
+  <div class="status-badge inactive" id="statusBadge">
+    <div class="status-dot"></div>
+    <span id="statusText">Inactive</span>
+  </div>
+
+  <div class="toggle-row">
+    <label>Auto Accept</label>
+    <label class="switch">
+      <input type="checkbox" id="toggleAccept" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="toggle-row">
+    <label>Auto Retry</label>
+    <label class="switch">
+      <input type="checkbox" id="toggleRetry" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="toggle-row">
+    <label>Scroll Into View</label>
+    <label class="switch">
+      <input type="checkbox" id="toggleScroll" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card accept">
+      <div class="num" id="acceptCount">0</div>
+      <div class="label">Accepted</div>
+    </div>
+    <div class="stat-card retry">
+      <div class="num" id="retryCount">0</div>
+      <div class="label">Retried</div>
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <button class="btn btn-inject" id="btnInject">▶ Start</button>
+    <button class="btn btn-stop" id="btnStop">⏹ Stop</button>
+  </div>
+
+  <div class="footer">v1.0 — Scan every 2s</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
