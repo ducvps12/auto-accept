@@ -448,4 +448,13 @@ function getWelcomeHtml() {
 </html>`;
 }
 
+// ==================== DEACTIVATION ====================
+function deactivate() {
+    stopAutoAccept();
+    if (statusBarItem) {
+        statusBarItem.dispose();
+    }
+    console.log('[AG Auto Accept] Extension deactivated');
+}
+
 module.exports = { activate, deactivate };
