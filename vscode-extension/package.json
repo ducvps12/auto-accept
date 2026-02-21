@@ -2,7 +2,7 @@
     "name": "antigravity-auto-accept",
     "displayName": "Antigravity Auto Accept & Retry",
     "description": "⚡ Tự động Accept commands & Retry khi lỗi trong Antigravity IDE — by Nemark Digital",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "publisher": "ducvps12",
     "author": {
         "name": "Nemark Digital",
@@ -43,6 +43,10 @@
             {
                 "command": "agAutoAccept.showWelcome",
                 "title": "Auto Accept: Show Welcome & Guide"
+            },
+            {
+                "command": "agAutoAccept.showLog",
+                "title": "Auto Accept: Show Log"
             }
         ],
         "configuration": {
@@ -76,6 +80,13 @@
                 }
             }
         },
+        "keybindings": [
+            {
+                "command": "agAutoAccept.toggle",
+                "key": "ctrl+alt+shift+a",
+                "mac": "cmd+alt+shift+a"
+            }
+        ],
         "walkthroughs": [
             {
                 "id": "agAutoAccept.welcome",

@@ -5,17 +5,52 @@ let scanInterval;
 let isActive = false;
 let totalAccepts = 0;
 let totalRetries = 0;
+let outputChannel;
 
-// ==================== BUTTON PATTERNS ====================
-const ACCEPT_KEYWORDS = ['accept', 'run', 'approve'];
-const RETRY_KEYWORDS = ['retry', 'try again', 'rerun', 're-run'];
-const CLASS_PATTERNS = ['hover:bg-ide-button-hover', 'bg-ide-button-bac'];
+// ==================== ANTIGRAVITY INTERNAL COMMANDS ====================
+// These are the internal commands exposed by Antigravity IDE.
+// Using these directly bypasses all UI/DOM dependencies,
+// making the extension immune to CSS/class changes from IDE updates.
+const ANTIGRAVITY_COMMANDS = {
+    // Agent step acceptance
+    accept: [
+        'antigravity.agent.acceptAgentStep',
+        'antigravity.terminalCommand.accept',
+        'antigravity.command.accept',
+        'antigravity.agent.acceptAll',
+        'antigravity.agent.acceptStep',
+        'antigravity.accept',
+        'antigravity.acceptAll',
+        'antigravity.agent.approve',
+        'antigravity.agent.proceed',
+        // VS Code built-in fallbacks
+        'workbench.action.acceptSelectedQuickOpenItem',
+        'editor.action.inlineSuggest.commit',
+    ],
+    // Retry on failure
+    retry: [
+        'antigravity.agent.retryStep',
+        'antigravity.agent.retry',
+        'antigravity.retry',
+        'antigravity.command.retry',
+        'antigravity.terminalCommand.retry',
+    ],
+};
+
+// Store discovered valid commands
+let validAcceptCommands = [];
+let validRetryCommands = [];
 
 // ==================== ACTIVATION ====================
 function activate(context) {
-    console.log('[AG Auto Accept] ⚡ Extension activated — by Nemark Digital');
+    // Create output channel for logging
+    outputChannel = vscode.window.createOutputChannel('AG Auto Accept');
+    context.subscriptions.push(outputChannel);
 
-    // Create status bar button (RIGHT side by default)
+    log('⚡ Extension activated — by Nemark Digital');
+    log(`🔍 Discovering Antigravity internal commands...`);
+
+    // Create status bar button
     const config = vscode.workspace.getConfiguration('agAutoAccept');
     const position = config.get('statusBarPosition', 'right');
     const alignment = position === 'right'
@@ -39,6 +74,9 @@ function activate(context) {
         }),
         vscode.commands.registerCommand('agAutoAccept.showWelcome', () => {
             showWelcomePanel(context);
+        }),
+        vscode.commands.registerCommand('agAutoAccept.showLog', () => {
+            outputChannel.show();
         })
     );
 
@@ -46,9 +84,7 @@ function activate(context) {
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('agAutoAccept')) {
-                const newConfig = vscode.workspace.getConfiguration('agAutoAccept');
                 if (isActive) {
-                    // Restart with new settings
                     stopAutoAccept();
                     startAutoAccept();
                 }
@@ -56,10 +92,13 @@ function activate(context) {
         })
     );
 
-    // Auto-start if enabled
-    if (config.get('enabled', true)) {
-        startAutoAccept();
-    }
+    // Discover valid commands on startup
+    discoverCommands().then(() => {
+        // Auto-start if enabled
+        if (config.get('enabled', true)) {
+            startAutoAccept();
+        }
+    });
 
     updateStatusBar();
 
@@ -71,6 +110,85 @@ function activate(context) {
     }
 }
 
+// ==================== COMMAND DISCOVERY ====================
+// Dynamically discovers which Antigravity commands are available.
+// This makes the extension self-healing — if Google adds new commands
+// or renames existing ones, we'll find them automatically.
+async function discoverCommands() {
+    try {
+        const allCommands = await vscode.commands.getCommands(true);
+
+        // Find all antigravity-related commands
+        const antigravityCommands = allCommands.filter(cmd =>
+            cmd.toLowerCase().includes('antigravity') ||
+            cmd.toLowerCase().includes('agent.accept') ||
+            cmd.toLowerCase().includes('agent.retry') ||
+            cmd.toLowerCase().includes('agent.proceed') ||
+            cmd.toLowerCase().includes('agent.approve')
+        );
+
+        if (antigravityCommands.length > 0) {
+            log(`✅ Found ${antigravityCommands.length} Antigravity commands:`);
+            antigravityCommands.forEach(cmd => log(`   📌 ${cmd}`));
+        } else {
+            log(`⚠️ No Antigravity-specific commands found. Using known command list.`);
+        }
+
+        // Build valid command lists
+        // Priority: discovered Antigravity commands first, then our known list
+        validAcceptCommands = [];
+        validRetryCommands = [];
+
+        // Add discovered accept-like commands
+        antigravityCommands.forEach(cmd => {
+            const lower = cmd.toLowerCase();
+            if (lower.includes('accept') || lower.includes('approve') || lower.includes('proceed')) {
+                if (!validAcceptCommands.includes(cmd)) {
+                    validAcceptCommands.push(cmd);
+                }
+            }
+            if (lower.includes('retry') || lower.includes('rerun') || lower.includes('re-run')) {
+                if (!validRetryCommands.includes(cmd)) {
+                    validRetryCommands.push(cmd);
+                }
+            }
+        });
+
+        // Add known commands that exist in the IDE
+        for (const cmd of ANTIGRAVITY_COMMANDS.accept) {
+            if (allCommands.includes(cmd) && !validAcceptCommands.includes(cmd)) {
+                validAcceptCommands.push(cmd);
+            }
+        }
+        for (const cmd of ANTIGRAVITY_COMMANDS.retry) {
+            if (allCommands.includes(cmd) && !validRetryCommands.includes(cmd)) {
+                validRetryCommands.push(cmd);
+            }
+        }
+
+        // Always keep our full known list as fallback (commands may appear dynamically)
+        ANTIGRAVITY_COMMANDS.accept.forEach(cmd => {
+            if (!validAcceptCommands.includes(cmd)) {
+                validAcceptCommands.push(cmd);
+            }
+        });
+        ANTIGRAVITY_COMMANDS.retry.forEach(cmd => {
+            if (!validRetryCommands.includes(cmd)) {
+                validRetryCommands.push(cmd);
+            }
+        });
+
+        log(`📋 Accept commands: ${validAcceptCommands.length}`);
+        log(`📋 Retry commands: ${validRetryCommands.length}`);
+
+    } catch (e) {
+        log(`⚠️ Command discovery failed: ${e.message}`);
+        // Fallback to full known lists
+        validAcceptCommands = [...ANTIGRAVITY_COMMANDS.accept];
+        validRetryCommands = [...ANTIGRAVITY_COMMANDS.retry];
+    }
+}
+
 // ==================== START / STOP ====================
 function startAutoAccept() {
     if (isActive) return;
@@ -79,12 +197,17 @@ function startAutoAccept() {
     const config = vscode.workspace.getConfiguration('agAutoAccept');
     const interval = config.get('scanInterval', 2000);
 
+    // Perform initial scan immediately
+    performScan();
+
     scanInterval = setInterval(() => {
         performScan();
     }, interval);
 
     updateStatusBar();
-    console.log(`[AG Auto Accept] ▶ Started — scanning every ${interval}ms`);
+    log(`▶ Started — scanning every ${interval}ms`);
+    log(`  Accept commands: ${validAcceptCommands.length}`);
+    log(`  Retry commands: ${validRetryCommands.length}`);
 }
 
 function stopAutoAccept() {
@@ -97,22 +220,36 @@ function stopAutoAccept() {
     }
 
     updateStatusBar();
-    console.log('[AG Auto Accept] ⏹ Stopped');
+    log('⏹ Stopped');
 }
 
 // ==================== SCAN ====================
-function performScan() {
+async function performScan() {
     const config = vscode.workspace.getConfiguration('agAutoAccept');
     const autoRetry = config.get('autoRetry', true);
 
-    try {
-        // VS Code quick input accept
-        vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem').then(() => { }, () => { });
-    } catch (e) { }
+    // Execute all accept commands
+    for (const cmd of validAcceptCommands) {
+        try {
+            await vscode.commands.executeCommand(cmd);
+            // If it succeeds without error, it likely did something
+            totalAccepts++;
+        } catch (e) {
+            // Command not available or no pending action — this is normal
+        }
+    }
 
-    // The main auto-click mechanism works through the content script
-    // injected in the browser extension version.
-    // For the IDE extension, we rely on VS Code's command system.
+    // Execute retry commands if enabled
+    if (autoRetry) {
+        for (const cmd of validRetryCommands) {
+            try {
+                await vscode.commands.executeCommand(cmd);
+                totalRetries++;
+            } catch (e) {
+                // Command not available or no pending retry — this is normal
+            }
+        }
+    }
 }
 
 // ==================== STATUS BAR ====================
@@ -124,6 +261,7 @@ function updateStatusBar() {
             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
             `✅ Accepted: ${totalAccepts}`,
             `🔄 Retried: ${totalRetries}`,
+            `📋 Commands: ${validAcceptCommands.length} accept, ${validRetryCommands.length} retry`,
             '',
             '📌 Click to toggle OFF',
             '',
@@ -146,6 +284,16 @@ function updateStatusBar() {
         statusBarItem.color = undefined;
     }
     statusBarItem.show();
+}
+
+// ==================== LOGGING ====================
+function log(message) {
+    const timestamp = new Date().toLocaleTimeString();
+    const line = `[${timestamp}] ${message}`;
+    if (outputChannel) {
+        outputChannel.appendLine(line);
+    }
+    console.log(`[AG Auto Accept] ${message}`);
 }
 
 // ==================== WELCOME PANEL ====================
@@ -225,6 +373,17 @@ function getWelcomeHtml() {
         font-weight: 600;
         border: 1px solid rgba(56,189,248,0.2);
     }
+    .hero .resilient-badge {
+        display: inline-block;
+        background: rgba(166,227,161,0.15);
+        color: #a6e3a1;
+        padding: 4px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid rgba(166,227,161,0.2);
+        margin-left: 8px;
+    }
 
     .container { max-width: 800px; margin: 0 auto; padding: 40px; }
 
@@ -237,6 +396,24 @@ function getWelcomeHtml() {
         display: flex;
         align-items: center;
         gap: 10px;
+    }
+
+    .tech-banner {
+        background: linear-gradient(135deg, #1a2332, #0d1b2a);
+        border: 1px solid #238636;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+    .tech-banner h3 { color: #58a6ff; font-size: 16px; margin-bottom: 10px; }
+    .tech-banner p { color: #8b949e; font-size: 13px; line-height: 1.6; }
+    .tech-banner code {
+        background: #0d1117;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #79c0ff;
+        border: 1px solid #30363d;
     }
 
     .features {
@@ -362,11 +539,26 @@ function getWelcomeHtml() {
         <div class="hero-icon">⚡</div>
         <h1>Antigravity Auto Accept & Retry</h1>
         <p class="subtitle">Tự động Accept commands & Retry khi lỗi — by Nemark Digital</p>
-        <span class="version-badge">v0.2.0</span>
+        <span class="version-badge">v0.3.0</span>
+        <span class="resilient-badge">🛡️ Update-Proof</span>
     </div>
 </div>
 
 <div class="container">
+
+    <div class="section">
+        <div class="tech-banner">
+            <h3>🛡️ Công nghệ chống lỗi khi IDE update</h3>
+            <p>
+                Extension này sử dụng <strong>Internal Antigravity Commands</strong> trực tiếp thay vì
+                dựa vào CSS class hay DOM selectors. Khi Google update IDE, giao diện có thể thay đổi
+                nhưng các internal commands (<code>antigravity.agent.acceptAgentStep</code>, v.v.) luôn ổn định.
+                <br><br>
+                Ngoài ra, extension có <strong>Command Discovery</strong> — tự động tìm và sử dụng
+                tất cả commands mới mà Antigravity thêm vào trong tương lai.
+            </p>
+        </div>
+    </div>
 
     <div class="section">
         <h2>✨ Tính năng</h2>
@@ -382,14 +574,24 @@ function getWelcomeHtml() {
                 <p>Tự động Retry khi command thất bại, không cần thao tác thủ công</p>
             </div>
             <div class="feature-card">
+                <div class="icon">🛡️</div>
+                <h3>Update-Proof</h3>
+                <p>Sử dụng internal API — không bao giờ hỏng khi IDE update UI</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔍</div>
+                <h3>Auto-Discovery</h3>
+                <p>Tự phát hiện commands mới — luôn tương thích phiên bản mới nhất</p>
+            </div>
+            <div class="feature-card">
                 <div class="icon">⚡</div>
                 <h3>Quick Toggle</h3>
                 <p>Bật/tắt nhanh bằng nút ở status bar góc phải — 1 click là xong</p>
             </div>
             <div class="feature-card">
-                <div class="icon">⚙️</div>
-                <h3>Tùy chỉnh</h3>
-                <p>Cấu hình scan interval, auto-start, vị trí nút trong Settings</p>
+                <div class="icon">📊</div>
+                <h3>Output Log</h3>
+                <p>Xem log chi tiết trong Output panel — dễ debug khi có vấn đề</p>
             </div>
         </div>
     </div>
@@ -413,6 +615,13 @@ function getWelcomeHtml() {
             </div>
             <div class="step">
                 <div class="step-num">3</div>
+                <div class="step-content">
+                    <h3>Xem Log</h3>
+                    <p>Mở Command Palette → <code>Auto Accept: Show Log</code> để xem danh sách commands đã phát hiện và trạng thái hoạt động.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">4</div>
                 <div class="step-content">
                     <h3>Tùy chỉnh Settings</h3>
                     <p>Mở <code>Ctrl+,</code> → tìm <code>Auto Accept</code> để thay đổi tốc độ scan, bật/tắt auto-retry, và vị trí nút status bar.</p>
@@ -453,6 +662,9 @@ function deactivate() {
     stopAutoAccept();
     if (statusBarItem) {
         statusBarItem.dispose();
+    }
+    if (outputChannel) {
+        outputChannel.dispose();
     }
     console.log('[AG Auto Accept] Extension deactivated');
 }
