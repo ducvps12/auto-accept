@@ -1,0 +1,58 @@
+{
+    "name": "antigravity-auto-accept",
+    "displayName": "Antigravity Auto Accept & Retry",
+    "description": "Automatically accepts commands and retries failed actions in Antigravity",
+    "version": "0.1.0",
+    "publisher": "ducvps12",
+    "engines": {
+        "vscode": "^1.74.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "agAutoAccept.start",
+                "title": "AG Auto Accept: Start"
+            },
+            {
+                "command": "agAutoAccept.stop",
+                "title": "AG Auto Accept: Stop"
+            },
+            {
+                "command": "agAutoAccept.toggle",
+                "title": "AG Auto Accept: Toggle"
+            }
+        ],
+        "configuration": {
+            "title": "Antigravity Auto Accept",
+            "properties": {
+                "agAutoAccept.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable auto-accept on startup"
+                },
+                "agAutoAccept.autoRetry": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable auto-retry for failed commands"
+                },
+                "agAutoAccept.scanInterval": {
+                    "type": "number",
+                    "default": 2000,
+                    "description": "Scan interval in milliseconds"
+                }
+            }
+        }
+    },
+    "icon": "icons/icon128.png",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ducvps12/auto-accept"
+    }
+}
